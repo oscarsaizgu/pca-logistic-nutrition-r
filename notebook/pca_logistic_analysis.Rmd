@@ -1,11 +1,12 @@
----
-title: "Actividad Grupal Estadística - Lote 1, Equipo 1"
-author: "Óscar Saiz , María Cordón, Laura Albarracín y Juan F Martínez"
+--
+title: "Principal Component and Logistic Regression Analysis"
+author: "Oscar Saiz Gutierrez"
 date: "2024-06-18"
-output: 
+output:
   prettydoc::html_pretty:
     theme: architect
 ---
+
 ```{r message=FALSE, warning=FALSE, results='hide', fig.keep='all'}
 library(readr)
 library(factoextra)
@@ -23,258 +24,141 @@ library(gtsummary)
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-</br>
-</br>
+# 1. Data Preparation and Normality Testing
 
-## Cálculo de la normalidad de los datos 
+We load the dataset, which includes dietary intake, clinical variables, and disease prevalence for 4900 individuals.
 
-Primero, se carga la base de datos de la actividad, que consiste en una muestra de 4900 individuos y 177 variables, referentes a datos clínicos de cada paciente y al consumo diario de determinados alimentos y nutrientes.
-
-```{r message=FALSE, warning=FALSE, results='hide', fig.keep='all'}
-data <- read_csv("mubio02_act3_alimentos_nutrientes_4900.csv")
+```{r}
+data <- read_csv("data/alimentos_nutrientes_4900.csv")
 ```
 
-Como buena práctica, siempre se comprueba la normalidad de los datos. En este caso, se aplica un test de Anderson-Darling para las variables alimentos 1-131 y nutrientes 1-19. Los resultados de dicho test se almacenan en la *Tabla 1* del archivo adjunto a la tarea.
+To verify statistical assumptions, we test normality for all food (alimento1–131) and nutrient (nutriente1–19) variables using the Anderson–Darling test.
 
-```{r message=FALSE, warning=FALSE, results='hide', fig.keep='all'}
-for(i in 1:131){
-  alimentos <- ad.test(data[[paste0("alimento",i)]])
+```{r}
+for(i in 1:131) {
+  alimentos <- ad.test(data[[paste0("alimento", i)]])
 }
-for(i in 1:19){
-  nutrientes <- ad.test(data[[paste0("nutriente",i)]])
+for(i in 1:19) {
+  nutrientes <- ad.test(data[[paste0("nutriente", i)]])
 }
 
-# Creo la tabla para alimentos:
-TablaNormalidadAlimentos <- data.frame(
-  Variable=c(paste0("alimento",1:131)),
-  Test_Utilizado=c(rep("Anderson-Darling",131)),
-  Valor_p=c(alimentos$p.value),
-  Interpretación=ifelse(alimentos$p.value< 0.05, "No Normal", "Normal"),
-  stringsAsFactors=FALSE
+TablaNormalidad <- rbind(
+  data.frame(
+    Variable = paste0("alimento", 1:131),
+    Test = "Anderson-Darling",
+    p_value = alimentos$p.value,
+    Interpretation = ifelse(alimentos$p.value < 0.05, "Not Normal", "Normal")
+  ),
+  data.frame(
+    Variable = paste0("nutriente", 1:19),
+    Test = "Anderson-Darling",
+    p_value = nutrientes$p.value,
+    Interpretation = ifelse(nutrientes$p.value < 0.05, "Not Normal", "Normal")
+  )
 )
-# Creo la tabla para nutrientes:
-TablaNormalidadNutrientes <- data.frame(
-  Variable=c(paste0("nutriente",1:19)),
-  Test_Utilizado=c(rep("Anderson-Darling",19)),
-  Valor_p=c(nutrientes$p.value),
-  Interpretación=ifelse(nutrientes$p.value<0.05, "No Normal", "Normal"),
-  stringsAsFactors=FALSE
-)
-# Unir ambas tablas
-Tabla1 <- rbind(TablaNormalidadAlimentos, TablaNormalidadNutrientes)
-Tabla1
-# Guardo la tabla como .csv
-rutatabla <- "TablaNormalidad.csv"
-write.csv(Tabla1, rutatabla)
+write.csv(TablaNormalidad, "output/normality_results.csv")
 ```
 
-</br>
-</br>
+# 2. Principal Component Analysis (PCA)
 
-## Reducción de dimensiones mediante PCA
+We isolate and standardize food and nutrient variables before performing PCA.
 
-Se nos pide realizar un PCA de las variables **alimentos y nutrientes**, para lo que se crea un nuevo *dataset* que solo contenga estas variables, y se estandariza. Esto se hace para que todas las variables estén en la misma escala.
-
-```{r message=FALSE, warning=FALSE, results='hide', fig.keep='all'}
-alimentosPCA <- paste0("alimento", 1:131, sep="")
-nutrientesPCA <- paste0("nutriente", 1:19, sep="")
-datapca <- data[, c(alimentosPCA, nutrientesPCA)]
-datapcae <- scale(datapca)
+```{r}
+food_vars <- paste0("alimento", 1:131)
+nutrient_vars <- paste0("nutriente", 1:19)
+datapca <- data[, c(food_vars, nutrient_vars)]
+datapca_scaled <- scale(datapca)
 ```
 
-
-Se realiza el PCA, y a continuación se calcula el porcentaje de la varianza explicada (PVE) para cada componente principal. estos resultados se almacenan en la *Tabla 2* del archivo adjunto a esta tarea.
-
-```{r message=FALSE, warning=FALSE, results='hide', fig.keep='all'}
-pca <- prcomp(datapcae)
-PVE <- 100*pca$sdev^2/sum(pca$sdev^2)
-
-# Tabla PCA componentes y R2
-result_table <- data.frame(
-  PCA = 1:length(PVE),
-  PVE = PVE
-)
-result_table
-# Guardo la tabla como .csv
-rutatablaPCAr2 <- "TablaPCAR2.csv"
-write.csv(result_table, rutatablaPCAr2)
+```{r}
+pca <- prcomp(datapca_scaled)
+PVE <- 100 * pca$sdev^2 / sum(pca$sdev^2)
+write.csv(data.frame(PC = 1:length(PVE), R2 = PVE), "output/pca_variance.csv")
 ```
 
-Además de la información presente en la tabla, interesa representar gráficamente los *eigenvalues* de los componentes principales.
-
-```{r message=FALSE, warning=FALSE, results='hide', fig.keep='all'}
-fviz_eig(pca, ylim=c(0,15), addlabels = T, title= "PCA")
-par(mfrow = c(1,2))
-plot(PVE, type = "o", 
-     ylab = "PVE", 
-     xlab = "Componente principal", 
-     col = "blue",
-     main="Varianza Explicada por cada componente",
-     cex.main=0.8)
-plot(cumsum(PVE), type = "o", 
-     ylab = "PVE acumulada", 
-     xlab = "Componente principal", 
-     col = "brown3",
-     main="Varianza Explicada Acumulada por cada componente",
-     cex.main=0.8)
+```{r}
+fviz_eig(pca, ylim = c(0, 15), addlabels = TRUE, title = "PCA: Explained Variance")
 ```
 
-La primera componente principal (PC1) explica el 11,21% de la varianza, mientras que la segunda (PC2) solo el 3,53%. De este modo, las dos primeras componentes explican un total del 14,74% de la varianza de los datos, lo que no es una cantidad muy alta. Aun así, se decide seleccionar únicamente **PC1 y PC2**, ya que para llegar a un porcentaje aceptable (al menos del 50%) se deberían de seleccionar un mínimo de 32 componentes, lo cual no es viable en este tipo de análisis.
+We choose PC1 and PC2, which together explain ~14.74% of the total variance.
 
-</br>
-</br>
+# 3. PCA Loadings and Contributions
 
-## Rotación de cargas del PCA
+We extract the loadings (rotations) of PC1 and PC2.
 
-La rotación de cargas es un paso esencial que ayuda a la mejora de la interpretación de los resultados. De este modo, las cargas asociadas a cada variable en un componente nos indican la contribución de dicha variable al componente en particular. Así, se realiza esta tarea para ambas componentes, PCA1 y PCA2, y se almacenan los resultados en la *Tabla 3* del archivo adjunto a esta tarea.
+```{r}
+loadings <- pca$rotation[, 1:2]
+write.csv(loadings, "output/pca_loadings.csv")
 
-```{r message=FALSE, warning=FALSE, results='hide', fig.keep='all'}
-PCA1 <- pca$rotation[,1]
-PCA2 <- pca$rotation[,2]
-cargas <- pca$rotation[,1:2]
-rutatablaPCAcargas <- "TablaPCAcargas.csv"
-write.csv(cargas, rutatablaPCAcargas)
+fviz_contrib(pca, choice = "var", axes = 1, top = 10, addlabels = TRUE)
+fviz_contrib(pca, choice = "var", axes = 2, top = 10, addlabels = TRUE)
 ```
 
-A través de una de las funciones de la librería *factoextra*, también se puede visualizar gráficamente la importancia de cada variable por dimensiones. De este modo, se analiza qué alimentos o nutrientes son los más relevantes dentro de cada componente o dimensión.
+# 4. Descriptive Analysis by PCA Tertiles
 
-```{r message=FALSE, warning=FALSE, results='hide', fig.keep='all'}
-fviz_contrib(pca, choice = "var", axes = 1, top = 10, addlabels=T, ylim=c(0,6),
-             title="Contribución de Variables en PCA1")
-fviz_contrib(pca, choice = "var", axes = 2, top = 10, addlabels=T, ylim=c(0,6), 
-             title="Contribución de Variables en PCA2")
+We categorize PC1 and PC2 into tertiles to explore associations.
+
+```{r}
+data$Tertile_PC1 <- cut(pca$x[, 1], breaks = quantile(pca$x[, 1], probs = seq(0, 1, by = 1/3)), labels = FALSE)
+data$Tertile_PC2 <- cut(pca$x[, 2], breaks = quantile(pca$x[, 2], probs = seq(0, 1, by = 1/3)), labels = FALSE)
+data$scores_PC1 <- pca$x[, 1]
+data$scores_PC2 <- pca$x[, 2]
 ```
 
-</br>
-</br>
+We build summary tables with clinical and sociodemographic variables by tertile.
 
-## Descripción de variables relevantes
+```{r}
+categorical_vars <- c("sexo", "estado_civil", "tabaco", "colesterol", "hdl", "HTA",
+                      "hipercolesterolemia", "hipertrigliceridemia", "ECV_prev", "diab_prev")
 
-A partir de los scores de los componentes principales elegidos, se categoriza en terciles (T1, T2 y T3), y se añaden estas dos nuevas columnas (terciles_PC1 y terciles_PC2) al *dataset* original. A continuación, se seleccionan una serie de variables sociodemográficas y clínicas sobre las que aplicar la estadística descriptiva, además de los scores tanto del PC1 como del PC2. De este modo, se calculan la media y la desviación estándar para cada variable numérica, y el porcentaje de las variables categóricas, siempre en función del tercil y dentro de cada componente principal. Esta información se almacena en la *Tabla 4* del archivo adjunto a esta tarea.
-
-```{r message=FALSE, warning=FALSE, results='hide', fig.keep='all'}
-#Cálculo de los terciles
-terciles_PC1 <- cut(pca$x[, 1], breaks = quantile(pca$x[, 1], probs = seq(0, 1, by = 1/3)),
-                    labels = FALSE)
-terciles_PC2 <- cut(pca$x[, 2], breaks = quantile(pca$x[, 2], probs = seq(0, 1, by = 1/3)), 
-                    labels = FALSE)
-data$Tercil_PC1 <- terciles_PC1
-data$Tercil_PC2 <- terciles_PC2
-
-data$Tercil_PC1<- as.factor(data$Tercil_PC1)
-data$Tercil_PC2 <- as.factor(data$Tercil_PC2)
-
-#Creación de las variables que contienen los scores de cada componente.
-data$scores_PC1 <- pca$x[,1]
-data$scores_PC2 <- pca$x[,2]
-```
-
-
-```{r message=FALSE, warning=FALSE, results='hide', fig.keep='all'}
-#Elaboración de las tablas de estadística descriptiva para PC1 y PC2
-colSums(is.na(data))
-
-cat <- c("sexo", "estado_civil", "tabaco", "colesterol", "hdl", "HTA", 
-         "hipercolesterolemia", "hipertrigliceridemia", "ECV_prev", "diab_prev")
-for(var in cat) {
+for (var in categorical_vars) {
   data[[var]] <- as.factor(data[[var]])
 }
 
-descriptiva_PC1 <- subset(data, select = c(scores_PC1, scores_PC2, altura:carnes,
-                                           Tercil_PC1))
-descriptiva_PC2 <- subset(data, select = c(scores_PC1, scores_PC2, altura:carnes,
-                                           Tercil_PC2))
-
-tablaPC1 <- descriptiva_PC1 %>%
-  tbl_summary(by = Tercil_PC1,
-              type = list(where(is.numeric) ~ "continuous"),
+table_PC1 <- data %>%
+  tbl_summary(by = Tertile_PC1,
               statistic = list(all_continuous() ~ "{mean} ± ({sd})")) %>%
-  add_p(test = list(all_continuous() ~ "aov",
-                    all_categorical() ~ "chisq.test"),
-        pvalue_fun = ~ style_pvalue(.x, digits = 3))
+  add_p(pvalue_fun = ~ style_pvalue(.x, digits = 3))
 
-
-tablaPC2 <- descriptiva_PC2 %>%
-  tbl_summary(by = Tercil_PC2,
-              type = list(where(is.numeric) ~ "continuous"),
+table_PC2 <- data %>%
+  tbl_summary(by = Tertile_PC2,
               statistic = list(all_continuous() ~ "{mean} ± ({sd})")) %>%
-  add_p(test = list(all_continuous() ~ "aov",
-                    all_categorical() ~ "chisq.test"),
-        pvalue_fun = ~ style_pvalue(.x, digits = 3))
+  add_p(pvalue_fun = ~ style_pvalue(.x, digits = 3))
 
-tabla <- tbl_merge(list(tablaPC1, tablaPC2),
-                   tab_spanner = c("PC1", "PC2"))
-tabla
+tbl_merge(list(table_PC1, table_PC2), tab_spanner = c("PC1", "PC2"))
 ```
 
-</br>
-</br>
+# 5. Logistic Regression Models
 
-## Modelo de regresión logística
+We predict diabetes prevalence (`diab_prev`) using PCA tertiles and key covariates.
 
-En primer lugar, se analizan las variables en relación con la prevalencia de la diabetes. Aquellas más significativas y relacionadas son: sexo, edad, hdl, hipertrigliceridemia, depres_prev, METs_h_semana, alimento128, alimento129 y Tercil_PC1.
-
-```{r message=FALSE, warning=FALSE, results='hide', fig.keep='all'}
-variables <- glm(diab_prev ~ ., data = data, family = binomial)
-summary(variables)
-```
-
-De esta forma, se realiza el modelo de regresión logística ajustando mediante una serie de variables relacionadas con la variable dependiente, que es la prevalencia de la diabetes (*diab_prev*) Cabe destacar que no se utilizan la totalidad de las variables significativas encontradas, para evitar el sobreajuste.
-
-```{r message=FALSE, warning=FALSE, results='hide', fig.keep='all'}
+```{r}
 data$diab_prev <- factor(data$diab_prev)
 data$sexo <- factor(data$sexo)
-model <- glm(diab_prev ~ Tercil_PC1 + Tercil_PC2 + sexo + edad + hdl, 
-             data = data, family = "binomial")
-summary(model)
+
+model1 <- glm(diab_prev ~ Tertile_PC1 + Tertile_PC2 + sexo + edad + hdl,
+              data = data, family = "binomial")
+
+model2 <- glm(diab_prev ~ Tertile_PC1 + Tertile_PC2 + sexo + edad + altura + peso +
+                tabaco + colesterol + hdl + HTA + hipercolesterolemia +
+                hipertrigliceridemia + ECV_prev,
+              data = data, family = "binomial")
 ```
 
-La función *glm* no proporciona el valor de R2, por lo que este se calcula de la siguiente manera:
-
-```{r message=FALSE, warning=FALSE, results='hide', fig.keep='all'}
-coeficientes <- coef(model) 
-OR <- exp(coeficientes)
-OR
-
-pseudo_R2_McFadden <- 1 - (model$deviance / model$null.deviance)
-cat("Pseudo R-cuadrado de McFadden:", pseudo_R2_McFadden, "\n")
-```
-Se observa que el R2 toma un valor bajo, por lo que se realiza otro modelo utilizando otras variables distintas que puedan ajustar el modelo de regresión logística.
-
-```{r message=FALSE, warning=FALSE, results='hide', fig.keep='all'}
-model2 <- glm(diab_prev ~ Tercil_PC1 + Tercil_PC2 + sexo + edad + altura + peso + 
-                tabaco + colesterol + hdl + HTA + hipercolesterolemia + 
-                hipertrigliceridemia + ECV_prev, data = data, family = "binomial")
+```{r}
+summary(model1)
 summary(model2)
 
-coeficientes <- coef(model2) 
-OR <- exp(coeficientes)
-OR
+exp(coef(model1))
+exp(coef(model2))
 
-pseudo_R2_McFadden <- 1 - (model2$deviance / model2$null.deviance)
-cat("Pseudo R-cuadrado de McFadden:", pseudo_R2_McFadden, "\n")
-
+1 - (model1$deviance / model1$null.deviance)
+1 - (model2$deviance / model2$null.deviance)
 ```
 
-Por último, se realiza la tabla en la que se muestra la información referente a los modelos de regresión creados, en la que aparecen los OR (*odds ratio*) y los intervalos de confianza. Estos resultados se almacenan en la *Tabla 5* en el archivo adjunto a esta tarea.
-
-```{r message=FALSE, warning=FALSE, results='hide', fig.keep='all'}
-tabla_model <- tbl_regression(model,
-                         exponentiate = TRUE, 
-                         add_estimate_to_reference_rows = TRUE) %>%
-  modify_header(label ~ "Variable") %>%
-  modify_caption("**OR and 95% CI**")
-
-
-tabla_model2 <- tbl_regression(model2,
-                         exponentiate = TRUE, 
-                         add_estimate_to_reference_rows = TRUE) %>%
-  modify_header(label ~ "Variable") %>%
-  modify_caption("**OR and 95% CI**")
-
-
-tbl_merge <- tbl_merge(list(tabla_model, tabla_model2),
-                       tab_spanner = c("**Multivariable model 1**", 
-                                       "**Multivariable model 2**"))
-
+```{r}
+tbl_merge(list(
+  tbl_regression(model1, exponentiate = TRUE),
+  tbl_regression(model2, exponentiate = TRUE)
+), tab_spanner = c("Model 1", "Model 2"))
 ```
